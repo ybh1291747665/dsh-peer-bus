@@ -1,5 +1,7 @@
 # dsh-peer-bus
 
+[English](README.md) · **简体中文**
+
 面向 [DeepSeek Harness](https://github.com/deepseek-ai) 的跨 session 消息总线。它让两个**互相独立、没有父子关系**的 session 可以按 id 互相寻址并唤醒对方。
 
 ```
@@ -7,7 +9,7 @@ session A ──bus_send──▶ session B   （B 被唤醒，跑一个 turn）
 session B ──bus_send──▶ session A   （A 被唤醒，跑一个 turn）
 ```
 
-第一次使用请看 [USAGE.md](USAGE.md)，那是面向操作的指南：安装、白名单、让两个 session 对话、故障排查。
+第一次使用请看 [USAGE.md](USAGE.md)（英文），那是面向操作的指南：安装、白名单、让两个 session 对话、故障排查。
 
 ## 为什么需要它
 
@@ -316,8 +318,8 @@ npm run real-model-check   # 会在你配置的模型路由上消耗真实 token
 - **跨进程触达是选择性开启的，默认关闭。** `crossProcess: false` 时所有投递路径都是进程内的：另一个 DSH 进程持有的 session 在 roster 里显示为已存储，向它发送会因该进程持有日志锁而被拒为 `target-busy`。打开传输后这些 session 就可触达——它们会以 remote 标记出现在 roster 里，`bus_send`、`bus_ask`、`bus_reply`、`bus_status`、`bus_roster` 都跨边界可用。仍然保持本地的部分：传输是 Unix domain socket（Windows 命名管道），**不跨机器**。跨重启的持久性与这是两件事，两者都成立——已存储的 session 会被之后的进程 resume 并唤醒。
 - **没开启传输的 peer 是不可见的，这不是 bug。** 发现按 `DSH_HOME` 且按选择性开启划分，所以旧版本进程、或关了 `crossProcess` 的进程，就是不在这张网里。向它持有的 session 发送会被拒为 `target-busy`，并且消息会说明原因。
 - **冷恢复的 agent 空闲后会被释放 —— 仅限回退路径。** 总线**自己**恢复的会话（没有宿主 lookup，例如 `headless`）在空闲、inbox 为空且没有进行中的 ask 满 `resumedIdleMs`（10 分钟）后被释放，同时释放日志锁，其他进程就能再打开它；下一条消息会再次把它恢复。经宿主自身 lookup 恢复的会话（`web`）归宿主所有，和在 GUI 里打开的一样，总线从不卸载它。如果一个由总线在回退路径上恢复的会话**同时**在 GUI 中打开，总线仍可能在一段静默期后释放它；GUI 会在下一次请求时重新恢复它。
-- **每次发送都会从持久化重建 roster，成本随历史增长。** 每个 `bus_send`、`bus_ask` 和地址解析都会调用 `sessionPersistence.list()`，因此开销正比于**已存储**会话数，而不是在线会话数。在本仓库测试 home 上实测：1,123 个已存储会话时 `list()` 约 135–141 ms，整个 `roster()` 约 124–135 ms —— 而且每次发送都要再付一次。显而易见的修法是 live-first lookup（先只在在线 agent 里解析地址，地址不在线时才退回全量列表），目前**有意未做**，已在 [IMPROVEMENT-PLAN.md](IMPROVEMENT-PLAN.md) 记为推迟项。
-- **冷恢复在跨进程之间是单一赢家，而这正是总线提供的。** 下层做不到：会话日志有真实的跨进程 `flock(2)`，但那把锁守的是**写句柄**，`agents.resume` 并不去取它，所以两个进程同时决定恢复同一个已存储会话时**都会成功**。总线在唯一可能竞争的群体之间做仲裁——恢复之前，进程用一次原子的 `open(…, 'wx')` 在 `$DSH_HOME/peer-bus/claims/` 下认领该会话。赢家负责恢复；输家等赢家真正持有会话之后，**把消息转发给它**，所以不会有消息被丢掉。认领文件里的 pid 已不存在时可被接管；恢复失败会把认领交还；会话被释放或进程卸载时删除认领。仅在 `crossProcess` 开启时存在。`npm run e2e:xproc` 用两个真实进程布置这场竞争并断言结果。
+- **每次发送都会从持久化重建 roster，成本随历史增长。** 每个 `bus_send`、`bus_ask` 和地址解析都会调用 `sessionPersistence.list()`，因此开销正比于**已存储**会话数，而不是在线会话数。在本仓库测试 home 上实测：1,123 个已存储会话时 `list()` 约 135–141 ms，整个 `roster()` 约 124–135 ms —— 而且每次发送都要再付一次。显而易见的修法是 live-first lookup（先只在在线 agent 里解析地址，地址不在线时才退回全量列表），目前**有意未做**，这是有意推迟的优化，不是遗漏。
+- **冷恢复在跨进程之间是单一赢家，而这正是总线提供的。** 下层做不到：会话日志有真实的跨进程 `flock(2)`，但那把锁守的是**写句柄**，`agents.resume` 并不去取它，所以两个进程同时决定恢复同一个已存储会话时**都会成功**。总线在唯一可能竞争的群体之间做仲裁——恢复之前，进程用一次原子的 `open(…, 'wx')` 在 `$DSH_HOME/peer-bus/claims/` 下认领该会话。赢家负责恢复；输家等赢家真正持有会话之后，**把消息转发给它**，所以不会有消息被丢掉。认领文件里的 pid 已不存在时可被接管；恢复失败会把认领交还；会话被释放或进程卸载时删除认领。仅在 `crossProcess` 开启时存在。`npm run e2e:xproc` 用两个真实进程布置这场竞争并断言结果。一次通过运行的记录见 [verification/real-model-xproc-2026-10-02.md](verification/real-model-xproc-2026-10-02.md)。
 - **转发投递超时会报"状态未知"，而不是失败。** 如果对端在 `crossProcessDeliverTimeoutMs` 内没有应答，`bus_send` 返回 `targetState: "unknown"` 并给出可查询的 id——因为对端很可能**已经投递成功**，而报错会诱导模型重发。无论如何重发都是安全的：发送方给每次投递打上标记，接收进程遇到已经见过的 id 会判定为重复，返回原来的结果而不是第二次唤醒目标。
 - **路由是推断的，不是声明的。** 冷恢复读取最后一条 `request/header`（没有则读 `request/context`）事件来还原 provider、model 与 reasoning effort。从未发起过模型请求的 session 没有记录路由，恢复后的 turn 会是空的。
 - **回执跟踪的是投递，不是意图。** `bus_status` 能说明消息被取进了某个 turn、被 `bus_wait` 取走或被丢弃，但不能说明目标是否照消息去做了。回执只存在于本进程，重启后不保留。要拿答复，请用 `bus_ask`，或用 `bus_wait` 等回复。
