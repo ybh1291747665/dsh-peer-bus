@@ -1,0 +1,21 @@
+# Dependencies linked by scripts/link-dev-deps.mjs
+node_modules/
+
+# Workspace-local test DSH_HOME — never the user's real ~/.dsh
+.dsh-test/
+
+# Package-manager caches kept inside the workspace so an install never writes
+# to the user's home cache
+.npm-cache/
+.pnpm-store/
+
+*.log
+
+# Competitor-survey staging (npm metadata + READMEs fetched during research)
+.survey/
+
+# Private research and planning notes (competitor critiques, local paths).
+# Kept on disk, deliberately not published.
+COMPETITOR-DIFF.md
+IMPROVEMENT-PLAN.md
+dsh-extension-seams.md

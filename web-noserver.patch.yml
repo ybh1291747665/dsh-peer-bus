@@ -1,0 +1,17 @@
+# Boot the real `web` profile's full composition — HTTP server and frontend
+# included — on an OS-assigned port, so a check can prove the plugin loads in the
+# profile it was installed into without binding 3080 and disturbing a DSH that is
+# already running there.
+#
+# `port: 0` is the documented way to request an OS-assigned port.
+#
+# Verification-only overlay; it is not part of the plugin. Use it as the LAST
+# patch layer, after the overlay that mounts the bus:
+#
+#   BUS_CHECK_PROFILE=web \
+#   BUS_CHECK_PATCH=../bus.patch.yml,../web-noserver.patch.yml \
+#     npm run boot-check
+- id: webserver
+  config:
+    host: '127.0.0.1'
+    port: 0

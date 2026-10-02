@@ -1,0 +1,40 @@
+# dsh-peer-bus bundle patch: mounted as one insert over the profile root.
+#
+# Two rows, because DSH mounts a package's `./invariant` companion as its own
+# plugin row rather than discovering it:
+#
+#   peer-bus            the bus itself — tools and delivery.
+#   peer-bus-invariant  the package-owned durable-shape checks.
+#
+# The companion needs `invariants`, which the base, web, and headless bundles do
+# NOT mount (only `dsh-sdk-minimal` does). It deliberately does not DECLARE that
+# service as its own dependency: a declared-but-absent service holds the entry at
+# `pending` forever, and the loader prints "N entries did not activate" for every
+# such entry — on every boot of every profile but one. Instead the companion
+# activates unconditionally and waits for the service in a nested fiber, so it
+# registers the moment `@deepseek-ai/dsh-invariants` is composed and is simply
+# inert otherwise.
+#
+# This ships default-deny, so installing the plugin alone grants no session the
+# ability to message another. Add allow rules through the profile's own
+# cordis.patch.yml, targeting the bus row's id:
+#
+#   - id: peer-bus
+#     config:
+#       allow:
+#         - from: 'session-abc'
+#           to: 'session-def'
+#
+# A patch replaces the targeted row's whole `config`, so restate every key you
+# still want rather than only the one you are changing.
+- insert:
+    - id: peer-bus
+      name: 'dsh-peer-bus'
+      config:
+        allow: []
+        maxMessageBytes: 16384
+        maxSendsPerWindow: 10
+        rateWindowMs: 60000
+
+    - id: peer-bus-invariant
+      name: 'dsh-peer-bus/invariant'

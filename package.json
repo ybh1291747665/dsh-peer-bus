@@ -1,0 +1,83 @@
+{
+  "name": "dsh-peer-bus",
+  "version": "0.2.0",
+  "description": "Cross-session message bus for DeepSeek Harness: let independent sessions address and wake each other.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js",
+    "./peer-bus": "./src/peer-bus.js",
+    "./invariant": "./src/invariant.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "USAGE.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "test-home": "node scripts/setup-test-home.mjs",
+    "link-dev-deps": "node scripts/link-dev-deps.mjs",
+    "boot-check": "node scripts/boot-check.mjs",
+    "boot-check:web": "BUS_CHECK_PROFILE=web BUS_CHECK_PATCH=../web-noserver.patch.yml node scripts/boot-check.mjs",
+    "e2e": "node scripts/e2e-bus.mjs",
+    "e2e:web": "BUS_CHECK_PROFILE=web BUS_CHECK_PATCH=../bus.e2e.patch.yml,../web-noserver.patch.yml node scripts/e2e-bus.mjs",
+    "restart-e2e": "node scripts/restart-e2e.mjs",
+    "real-model-check": "node scripts/real-model-check.mjs",
+    "e2e:xproc": "node scripts/e2e-xproc.mjs",
+    "real-model-xproc": "node scripts/real-model-xproc.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "agent",
+    "session",
+    "message-bus",
+    "multi-agent"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "@deepseek-ai/dsh-agent": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-invariants": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-session": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-session-query": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.1.7-rc.2 <0.3.0-0",
+    "zod": "^4.4.3",
+    "@deepseek-ai/dsh-home-paths": ">=0.1.7-rc.2 <0.3.0-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-invariants": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-query": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-home-paths": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ybh1291747665/dsh-peer-bus.git"
+  },
+  "homepage": "https://github.com/ybh1291747665/dsh-peer-bus#readme",
+  "bugs": {
+    "url": "https://github.com/ybh1291747665/dsh-peer-bus/issues"
+  }
+}

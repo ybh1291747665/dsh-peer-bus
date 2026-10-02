@@ -1,0 +1,16 @@
+# Test overlay for the peer-bus plugin.
+#
+# Applied after the profile layer via `dsh <profile> --patch ./bus.patch.yml`,
+# so it proves the plugin mounts without editing the user's own
+# $DSH_HOME/profiles/<name>/cordis.patch.yml.
+#
+# Default-deny is deliberate: the allow rule below is what a person would add
+# once they know which two session ids should be able to talk.
+- insert:
+    - id: peer-bus
+      name: 'dsh-peer-bus'
+      config:
+        allow: []
+        maxMessageBytes: 16384
+        maxSendsPerWindow: 10
+        rateWindowMs: 60000
