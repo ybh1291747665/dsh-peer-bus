@@ -217,14 +217,58 @@ Only the sender can read a receipt. `claimed` means a turn took the message, not
 
 ## 7. Understand the limits before relying on it
 
-- **Cross-process reach is opt-in.** By default two sessions in *different* DSH processes cannot reach each other, and a send to a session open elsewhere is refused with `target-busy`. Set `crossProcess: true` in both processes and they can, over a local socket — no network, no port, and nothing is granted that the allowlist did not already allow.
+- **Cross-process reach is opt-in.** By default two sessions in *different* DSH processes cannot reach each other, and a send to a session open elsewhere is refused with `target-busy`. See section 8 for turning it on.
 - **Waking a stored session loads it.** On a profile where the bus resumes sessions itself (no host lookup, e.g. `headless`), it releases such a session after it has been idle for `resumedIdleMs` (default 10 min), which frees its log lock for other DSH processes; the next message resumes it again. Set `resumedIdleMs: 0` to keep them loaded. On `web`, resumes go through the host's own path and the session is host-owned, exactly like one opened in the GUI.
 - **The route is inferred.** Cold resume recovers provider, model, and reasoning effort from the session's last `request/header` event (or its last `request/context`). A session that never made a model request has no recorded route, and the resumed turn will be empty.
 - **Receipts track delivery, not intent.** `bus_status` tells you whether a message was taken into a turn, taken by `bus_wait`, or discarded — not whether the target acted on it. Receipts are process-local.
 - **Roster cost grows with stored history.** Every send and ask rebuilds the roster from persistence, so the work scales with the number of *stored* sessions rather than live ones — about 135 ms at 1,123 stored sessions on this repository's test home, paid on each send. Live-first lookup is the fix, and it is deliberately deferred rather than overlooked.
 - **Rate ceiling.** Each sender→target pair is capped at `maxSendsPerWindow` per `rateWindowMs` (default 10 per minute); a send that fails to deliver does not count. This exists so two auto-replying agents cannot loop forever spending tokens on every hop. It bounds the rate, not the length, of a conversation. If you hit `rate-limited`, the pair is talking more than a human would.
 
-## 8. Troubleshooting
+## 8. All configuration keys
+
+Set these under the `peer-bus` row of the profile's `cordis.patch.yml`. **A patch replaces the whole `config` block**, so restate every key you still want:
+
+```yaml
+- id: peer-bus
+  config:
+    allow:
+      - sameWorkspace: true
+    maxSendsPerWindow: 20
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `allow` | `[]` | Permission allowlist. **Empty permits nothing.** Both rule shapes are described in section 2. |
+| `maxMessageBytes` | `16384` | Maximum UTF-8 bytes in one message. |
+| `maxSendsPerWindow` | `10` | Send ceiling per sender→target pair per window. A failed delivery does not count. |
+| `rateWindowMs` | `60000` | Length of that window. |
+| `rosterScope` | `'allowed'` | What `bus_roster` shows: `'allowed'` = the caller plus what it may message; `'all'` = every session, flagged allowed or not. |
+| `waitTimeoutMs` | `60000` | Default wait for `bus_wait`, and for `bus_ask` when the target is idle. |
+| `maxWaitMs` | `600000` | Upper bound on any `bus_wait` or `bus_ask` timeout, so one call cannot hold a turn open indefinitely. |
+| `askBusyTimeoutMs` | `30000` | How long `bus_ask` waits when the target was already running, before returning `pending`. |
+| `resumedIdleMs` | `600000` | Release a session the bus cold-resumed *itself* after this much idle time, freeing its log lock. `0` keeps such sessions loaded. Sessions resumed through the host's own lookup are host-owned and unaffected. |
+| `crossProcess` | `false` | Reach sessions held live by another DSH process over a local socket. **Off by default on purpose** — see below. |
+| `crossProcessTimeoutMs` | `2000` | Timeout for one remote control-plane query (roster merge, `bus_status`, ask cancellation). Short on purpose: a wedged peer must degrade to "looks stored", not stall a turn. |
+| `crossProcessDeliverTimeoutMs` | `60000` | Timeout for one forwarded delivery, which may have to cold-resume the target on the far side. |
+| `crossProcessRosterCacheMs` | `3000` | How long this process may reuse the last answer to "which peer holds what". Every roster asks every peer, so a burst of sends would otherwise cost a query per send per peer. A stale answer is safe: the peer that no longer holds the session says so and the sender re-resolves. `0` asks every time. |
+
+### Turning on cross-process
+
+```yaml
+- id: peer-bus
+  config:
+    crossProcess: true
+```
+
+Set it in **every** process that should take part. Then `bus_roster` shows peer-held sessions marked remote, and `bus_send`, `bus_ask`, `bus_reply`, and `bus_status` all work across the boundary.
+
+**The receiving process still decides.** It re-runs its own allowlist, archive check, and rate ceiling, so a grant made in one process governs that process's sessions only — and a cross-process pair needs nothing written into the sender's config.
+
+If a peer cannot be reached in time, `bus_send` does not report a failure: it says the outcome is **unknown** and gives you the id to check with `bus_status`, because the peer may well have delivered it. Resending is safe either way — the receiving process recognises a repeat of a delivery id it has already taken.
+
+**The trust boundary is "the same OS user, over the same `DSH_HOME`".** Peers are discovered through files only that user can read (a `0700` directory, `0600` files). The socket is local: no network listener, no port. Enabling the transport grants nothing by itself — an empty `allow` list still permits nothing.
+
+## 9. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
@@ -245,7 +289,7 @@ Only the sender can read a receipt. `claimed` means a turn took the message, not
 | The target runs a turn but does nothing | The resumed session had no recorded model route. See the limits above. |
 | `message-too-large` | The body exceeded `maxMessageBytes` (default 16 KiB). |
 
-## 9. Verify a deployment yourself
+## 10. Verify a deployment yourself
 
 The package ships the checks it was developed against. All of them are offline: no network and no model calls.
 
