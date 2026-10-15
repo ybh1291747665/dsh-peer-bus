@@ -71,6 +71,15 @@ const REMOTE_RECEIPT_CAPACITY = 1000;
  */
 const DELIVERY_MEMORY = 1000;
 
+/**
+ * Most parts one batch may carry.
+ *
+ * A batch is one turn however many parts it holds, so this is not a token guard — it
+ * is a limit on how large a single message's body may get before it stops being
+ * readable, and `maxMessageBytes` still applies to the total.
+ */
+const MAX_BATCH_PARTS = 50;
+
 /** How long a process waits for the claim winner to actually take the session. */
 const CLAIM_WAIT_MS = 5000;
 
@@ -1061,11 +1070,24 @@ class SessionBus extends Service {
     if (agents.get(sender.id) !== sender) {
       throw new SessionBusError('message delivery requires the exact live sender agent', 'unauthorized');
     }
-    const text = request.text;
-    if (typeof text !== 'string' || text.trim() === '') {
+    // A batch is written as `texts`, a single message as `text`. Both become one
+    // message; the difference is only how many content blocks it carries.
+    const parts = request.texts === undefined ? [request.text] : request.texts;
+    if (
+      !Array.isArray(parts) ||
+      parts.length === 0 ||
+      parts.some((part) => typeof part !== 'string' || part.trim() === '')
+    ) {
       throw new SessionBusError('message text must be a non-empty string', 'invalid-text');
     }
-    const bytes = Buffer.byteLength(text, 'utf8');
+    if (parts.length > MAX_BATCH_PARTS) {
+      throw new SessionBusError(
+        `a batch carries at most ${MAX_BATCH_PARTS} parts; this one has ${parts.length}`,
+        'invalid-text',
+      );
+    }
+    const text = parts.length === 1 ? parts[0] : parts;
+    const bytes = parts.reduce((total, part) => total + Buffer.byteLength(part, 'utf8'), 0);
     if (bytes > this.config.maxMessageBytes) {
       throw new SessionBusError(
         `message is ${bytes} bytes; the limit is ${this.config.maxMessageBytes}`,

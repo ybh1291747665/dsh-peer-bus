@@ -87,10 +87,14 @@ const FRAMING_BLOCK = new RegExp(
  */
 function createBusMessage(senderSessionId, text, { askId, role = 'message' } = {}) {
   const lead = (LEAD_INS[role] ?? LEAD_INS.message)(senderSessionId);
+  // A batch is one message carrying one block per part, so the target reads all of it
+  // in a single turn. That is the entire point: N parts cost one turn, where N separate
+  // sends would cost N — and each of those would resend the target's whole context.
+  const parts = Array.isArray(text) ? text : [text];
   return createUserMessage({
     content: [
       { type: 'text', text: lead },
-      { type: 'text', text },
+      ...parts.map((part) => ({ type: 'text', text: part })),
       ...(role === 'question' ? [{ type: 'text', text: QUESTION_NOTE }] : []),
     ],
     source: {

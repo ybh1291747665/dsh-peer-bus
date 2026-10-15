@@ -261,8 +261,13 @@ function apply(ctx, config) {
         },
         text: {
           type: 'string',
-          required: true,
           description: 'Message body delivered to the target session.',
+        },
+        texts: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Several parts delivered as ONE turn instead of several. Use this whenever you have more than one thing to say: each part becomes its own block in a single message, so the target reads them together and pays one turn rather than one per part. Cannot be combined with text.',
         },
         supersede: {
           type: 'boolean',
@@ -307,10 +312,22 @@ function apply(ctx, config) {
         if (exec.agent === undefined) {
           throw new Error('bus_send requires a calling agent session');
         }
+        // Exactly one of `text` and `texts`: two ways to say the same thing would let a
+        // caller pass both and get a silently different delivery than it intended.
+        if ((args.text === undefined) === (args.texts === undefined)) {
+          throw new Error(
+            'bus_send needs exactly one of "text" (one body) or "texts" (several parts in one turn)',
+          );
+        }
         try {
           return await bus.send(
             exec.agent,
-            { target: args.target, text: args.text, mode: args.mode, supersede: args.supersede },
+            {
+              target: args.target,
+              ...(args.texts === undefined ? { text: args.text } : { texts: args.texts }),
+              mode: args.mode,
+              supersede: args.supersede,
+            },
             { signal: exec.signal },
           );
         } catch (error) {
