@@ -512,7 +512,12 @@ test('deliverLocal hands a pre-built message over without re-admitting it', asyn
 
   const message = createBusMessage('session-sender', 'forwarded', { role: 'message' });
   const result = await bus.deliverLocal('session-target', message, 'followup', {});
-  assert.deepEqual(result, { target: 'session-target', messageId: message.id, targetState: 'live' });
+  // Not deepEqual any more: the result also reports whether a supersede replaced
+  // something, and how deep this sender's unread queue now is.
+  assert.equal(result.target, 'session-target');
+  assert.equal(result.messageId, message.id);
+  assert.equal(result.targetState, 'live');
+  assert.equal(result.replaced, false);
   assert.equal(target.delivered.length, 1);
   assert.equal(target.delivered[0].message.id, message.id);
 });

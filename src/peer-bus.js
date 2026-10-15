@@ -782,14 +782,21 @@ class SessionBus extends Service {
           upstream: payload.upstream,
         });
       }
-      const result = await this.deliverLocal(targetId, message, payload.mode ?? 'followup', {});
+      const result = await this.deliverLocal(targetId, message, payload.mode ?? 'followup', {
+        supersede: payload.supersede === true,
+      });
       if (typeof payload.deliveryId === 'string') {
         this.deliveredRemote.set(payload.deliveryId, result.messageId);
         if (this.deliveredRemote.size > DELIVERY_MEMORY) {
           this.deliveredRemote.delete(this.deliveredRemote.keys().next().value);
         }
       }
-      return { messageId: result.messageId, targetState: result.targetState };
+      return {
+        messageId: result.messageId,
+        targetState: result.targetState,
+        replaced: result.replaced,
+        pendingFromYou: result.pendingFromYou,
+      };
     } catch (error) {
       release();
       throw error;
@@ -958,6 +965,7 @@ class SessionBus extends Service {
           targetId,
           text,
           mode,
+          ...(options.supersede === true ? { supersede: true } : {}),
           ...(message.source.askId === undefined ? {} : { askId: message.source.askId }),
           // Where the answer goes. Only meaningful with an ask id, and the peer
           // ignores it otherwise.
@@ -975,7 +983,13 @@ class SessionBus extends Service {
       if (this.remoteReceipts.size > REMOTE_RECEIPT_CAPACITY) {
         this.remoteReceipts.delete(this.remoteReceipts.keys().next().value);
       }
-      return { target: targetId, messageId: result.messageId, targetState: 'remote' };
+      return {
+        target: targetId,
+        messageId: result.messageId,
+        targetState: 'remote',
+        replaced: result.replaced === true,
+        pendingFromYou: result.pendingFromYou,
+      };
     } catch (error) {
       // A dead peer is the same situation as a peer that moved on: whatever the cache
       // said, this process has to take the local path. Treated together because the
@@ -1095,10 +1109,16 @@ class SessionBus extends Service {
       );
     }
     const release = this.assertWithinRate(sender.id, targetId);
+    // A supersede replaces rather than appends, so it cannot deepen the queue and the
+    // ceiling has no business refusing it.
+    if (request.supersede !== true) await this.assertNotPilingUp(sender.id, targetId);
     return {
       targetId,
       text,
       upstream: request.upstream,
+      // Read off the request, where the tool puts it, and carried in the admitted
+      // result so the delivery half never has to guess which argument holds it.
+      supersede: request.supersede === true,
       // Passed down the delivery path rather than looked up again later.
       targetOwner: owners.get(targetId),
       senderRow,
@@ -1113,6 +1133,51 @@ class SessionBus extends Service {
       mode: request.mode ?? 'followup',
       release,
     };
+  }
+
+  /**
+   * This sender's bus messages still sitting unclaimed in one target's inbox.
+   *
+   * Read from the inbox's own durable projection rather than from a book kept here:
+   * the queue survives a restart, so a book that did not would disagree with it.
+   *
+   * @param agent - the live target.
+   * @param senderSessionId - who sent them.
+   * @returns the pending messages, oldest first.
+   */
+  pendingBusMessages(agent, senderSessionId) {
+    const inbox = agent.inbox;
+    if (inbox === undefined) return [];
+    return [inbox.nextTurn ?? [], inbox.nextStep ?? []]
+      .flat()
+      .filter(
+        (message) =>
+          message?.source?.kind === BUS_SOURCE_KIND && message.source.senderSessionId === senderSessionId,
+      );
+  }
+
+  /**
+   * Refuse a send that would make one pair's unclaimed queue deeper than allowed.
+   *
+   * Off by default (`maxPendingPerPair: 0`). The precise fix for a queue that has gone
+   * stale is `supersede`; this is the guard for a sender that keeps talking anyway.
+   *
+   * @param senderId - who is sending.
+   * @param targetId - who would receive it.
+   * @throws {SessionBusError} `target-backlog` when the queue is already at the limit.
+   */
+  async assertNotPilingUp(senderId, targetId) {
+    const limit = this.config.maxPendingPerPair ?? 0;
+    if (limit <= 0) return;
+    const target = this.pluginCtx.agents.get(targetId);
+    if (target === undefined) return;
+    const pending = this.pendingBusMessages(target, senderId).length;
+    if (pending >= limit) {
+      throw new SessionBusError(
+        `session "${senderId}" already has ${pending} unread messages at "${targetId}" (limit ${limit}); wait for it to catch up, or resend with supersede: true to replace the last one`,
+        'target-backlog',
+      );
+    }
   }
 
   /**
@@ -1154,21 +1219,41 @@ class SessionBus extends Service {
           );
         }
       }
+      // A correction should land where the instruction it corrects was queued, and the
+      // target must never start the superseded one — so this runs before the message is
+      // routed, and before the receipt is recorded. `replace` is a single durable inbox
+      // mutation and reports whether the old message was still pending; the receipt book
+      // hears the resulting `discarded` event on its own.
+      let replaced = false;
+      if (options.supersede === true && message.source.askId === undefined) {
+        const newest = this.pendingBusMessages(target, message.source.senderSessionId).at(-1);
+        if (newest !== undefined && typeof target.inbox?.replace === 'function') {
+          replaced = target.inbox.replace(newest.id, message);
+        }
+      }
+
       // The receipt must exist before routing: an idle target claims the message
       // synchronously inside `followup()`, and a receipt recorded afterwards would
       // miss its own claim. The sender is read off the message, not passed in, so
       // this half works identically for a forwarded delivery.
       forgetReceipt = this.receipts.record(message, message.source.senderSessionId, targetId);
       try {
-        this.route(target, message, mode);
+        if (replaced) this.touch(targetId);
+        else this.route(target, message, mode);
       } catch (error) {
         throw new SessionBusError(
           `could not deliver to session "${targetId}": ${error?.message ?? String(error)}`,
           'delivery-failed',
         );
       }
-      this.touch(targetId);
-      return { target: targetId, messageId: message.id, targetState };
+      if (!replaced) this.touch(targetId);
+      return {
+        target: targetId,
+        messageId: message.id,
+        targetState,
+        replaced,
+        pendingFromYou: this.pendingBusMessages(target, message.source.senderSessionId).length,
+      };
     } catch (error) {
       // A message that never reached the target must not leave a receipt for a
       // message that does not exist.
@@ -1195,13 +1280,16 @@ class SessionBus extends Service {
   async send(sender, request, options = {}) {
     const admitted = await this.authorize(sender, request, options);
     const { targetId, message, mode, release } = admitted;
+    // `supersede` arrives on the request; the delivery path reads it from options.
+    // Merging them here is the single place that reconciles the two.
+    const delivery = { ...options, supersede: admitted.supersede === true };
     try {
       // A session another process holds live looks *stored* from here, so it has
       // to be routed by the roster's own answer rather than by local liveness.
       if (admitted.targetOwner !== undefined) {
-        return await this.forwardRemote(admitted, options);
+        return await this.forwardRemote(admitted, delivery);
       }
-      return await this.deliverWithClaim(admitted, options);
+      return await this.deliverWithClaim(admitted, delivery);
     } catch (error) {
       // A message that never reached the target must not spend the pair's budget.
       release();

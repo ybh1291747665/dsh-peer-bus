@@ -152,6 +152,14 @@ const Config = z.object({
    * re-resolves and takes the local path. `0` asks every time.
    */
   crossProcessRosterCacheMs: z.natural().default(3000),
+  /**
+   * How many messages from one sender may sit unclaimed in one target's inbox.
+   *
+   * `0` disables the check. A sender that keeps talking while the target is busy
+   * builds a queue the target will work through long after the advice went stale, so
+   * this is the blunt guard; `bus_send`'s `supersede` is the precise one.
+   */
+  maxPendingPerPair: z.natural().default(0),
 });
 
 /** Largest delay `setTimeout` honours; anything above it fires immediately. */
@@ -256,6 +264,11 @@ function apply(ctx, config) {
           required: true,
           description: 'Message body delivered to the target session.',
         },
+        supersede: {
+          type: 'boolean',
+          description:
+            'Replace this session\'s newest unclaimed message to the same target instead of queueing behind it. Use it to correct or cancel an instruction the target has not started yet.',
+        },
         mode: {
           type: 'string',
           enum: ['followup', 'steer'],
@@ -272,14 +285,23 @@ function apply(ctx, config) {
             messageId: { type: 'string', required: true },
             targetState: { type: 'string', required: true },
             note: { type: 'string' },
+            replaced: { type: 'boolean' },
+            pendingFromYou: { type: 'integer' },
           },
         },
-        render: (_args, value) =>
-          renderLines([
+        render: (_args, value) => {
+          const head =
             value.note === undefined
-              ? `Delivered ${value.messageId} to ${value.target} (${value.targetState})`
-              : `${value.messageId} to ${value.target}: ${value.targetState} — ${value.note}`,
-          ]),
+              ? `${value.replaced === true ? 'Replaced the previous message with ' : 'Delivered '}${value.messageId} to ${value.target} (${value.targetState})`
+              : `${value.messageId} to ${value.target}: ${value.targetState} — ${value.note}`;
+          // A growing queue is the thing a sender most needs to notice, so it is said
+          // plainly rather than left for the model to infer.
+          const backlog =
+            value.pendingFromYou === undefined || value.pendingFromYou <= 1
+              ? ''
+              : ` — ${value.pendingFromYou} messages from this session are now unread there`;
+          return renderLines([`${head}${backlog}`]);
+        },
       },
       async execute(args, exec) {
         if (exec.agent === undefined) {
@@ -288,7 +310,7 @@ function apply(ctx, config) {
         try {
           return await bus.send(
             exec.agent,
-            { target: args.target, text: args.text, mode: args.mode },
+            { target: args.target, text: args.text, mode: args.mode, supersede: args.supersede },
             { signal: exec.signal },
           );
         } catch (error) {

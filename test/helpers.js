@@ -51,6 +51,7 @@ const baseConfig = (overrides = {}) => ({
 function fakeAgent(id, status = 'idle', cwd = '/tmp/ws', header = {}) {
   const workspace = cwd === null ? undefined : cwd;
   const delivered = [];
+  const inbox = makeInbox();
   return {
     id,
     status,
@@ -61,6 +62,9 @@ function fakeAgent(id, status = 'idle', cwd = '/tmp/ws', header = {}) {
       id,
       header: workspace === undefined ? { id, ...header } : { id, cwd: workspace, ...header },
     },
+    // Delivery is recorded, not queued. A real driver claims a message almost
+    // immediately, so an inbox that filled up here would make every fixture look
+    // permanently busy — tests that care about pending state set it directly.
     followup(message) {
       delivered.push({ mode: 'followup', message });
     },
@@ -68,7 +72,51 @@ function fakeAgent(id, status = 'idle', cwd = '/tmp/ws', header = {}) {
       delivered.push({ mode: 'steer', message });
     },
     delivered,
+    inbox,
   };
+
+  /**
+   * A faithful-enough inbox: the two pending lists, and the two mutations the bus
+   * uses. `replace` returns whether the message was still pending, exactly as the
+   * real one does, because supersede's behaviour depends on that answer.
+   */
+  function makeInbox() {
+    const lists = { 'next-turn': [], 'next-step': [] };
+    const state = { nextTurn: lists['next-turn'], nextStep: lists['next-step'] };
+    const locate = (id) => {
+      for (const key of ['nextTurn', 'nextStep']) {
+        const index = state[key].findIndex((message) => message.id === id);
+        if (index >= 0) return { key, index };
+      }
+      return undefined;
+    };
+    return {
+      get nextTurn() {
+        return state.nextTurn;
+      },
+      get nextStep() {
+        return state.nextStep;
+      },
+      get hasPending() {
+        return state.nextTurn.length > 0 || state.nextStep.length > 0;
+      },
+      /** Ids this inbox was asked to drop; the real one emits a discarded event for each. */
+      discarded: [],
+      replace(id, message) {
+        const at = locate(id);
+        if (at === undefined) return false;
+        const [removed] = state[at.key].splice(at.index, 1, message);
+        this.discarded.push(removed.id);
+        return true;
+      },
+      remove(id) {
+        const at = locate(id);
+        if (at === undefined) return false;
+        state[at.key].splice(at.index, 1);
+        return true;
+      },
+    };
+  }
 }
 
 /**
