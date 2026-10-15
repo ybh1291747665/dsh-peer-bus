@@ -47,6 +47,8 @@ dsh plugin --profile web add dsh-peer-bus
 | `bus_status` | 查询你发出的消息后来怎样了 |
 | `/bus` | **你**用来授权与撤销 —— 任何模型都做不到 |
 
+**每条消息都会唤醒一个完整 turn**，所以每次都要付一遍上下文的代价。一次说几件事用 `texts`，纠正目标尚未开始的指令用 `supersede`，并注意 `steer` 会整批合并而 `followup` 不会 —— 见[少花 turn](USAGE.md#spending-fewer-turns)。
+
 ## 权限
 
 不给授权就什么都不许。两种方式：

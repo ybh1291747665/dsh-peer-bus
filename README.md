@@ -47,6 +47,8 @@ To allow the other direction too, run `/bus allow <B's id>` in session A.
 | `bus_status` | what became of a message you sent |
 | `/bus` | **you** grant and revoke permission — no model can |
 
+**Each message wakes a full turn**, so a turn's worth of context is paid every time. Send several things at once with `texts`, correct an instruction the target has not started with `supersede`, and note that `steer` batches where `followup` does not — see [Spending fewer turns](USAGE.md#spending-fewer-turns).
+
 ## Permission
 
 Nothing is allowed until you grant it. Two ways:

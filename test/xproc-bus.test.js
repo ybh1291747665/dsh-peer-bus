@@ -572,3 +572,57 @@ test('a remote target the peer has archived is still refused before the trip', a
     await busB.dispose();
   }
 });
+
+test('a supersede crosses the socket and replaces the peer pending message', async () => {
+  // The replacement happens on the receiving side, against that side's own inbox —
+  // the sender never touches it directly, so this is the path that has to carry the
+  // flag and report the outcome back.
+  const { busA, agentA, agentB, dispose } = await twoBuses({
+    allowA: [{ from: 'session-a', to: 'session-b' }],
+    allowB: [{ from: 'session-a', to: 'session-b' }],
+  });
+  try {
+    const stale = {
+      id: 'stale-across',
+      content: [{ type: 'text', text: 'do A' }],
+      source: { kind: 'peer-bus-message', form: 'relay', senderSessionId: 'session-a' },
+    };
+    agentB.inbox.nextTurn.push(stale);
+
+    const result = await busA
+      .send(agentA, { target: 'session-b', text: 'do not do A', supersede: true }, {})
+      .catch((error) => error);
+
+    assert.ok(!(result instanceof Error), `send failed: ${result?.message}`);
+    assert.equal(result.targetState, 'remote');
+    assert.equal(result.replaced, true, 'the peer reports that it replaced the pending message');
+    assert.equal(
+      agentB.inbox.nextTurn.some((message) => message.id === stale.id),
+      false,
+      'the superseded message is gone on the far side',
+    );
+    assert.equal(agentB.delivered.length, 0, 'a replacement is a queue edit, not a delivery');
+  } finally {
+    await dispose();
+  }
+});
+
+test('a batch crosses the socket as one turn', async () => {
+  const { busA, agentA, agentB, dispose } = await twoBuses({
+    allowA: [{ from: 'session-a', to: 'session-b' }],
+    allowB: [{ from: 'session-a', to: 'session-b' }],
+  });
+  try {
+    const result = await busA
+      .send(agentA, { target: 'session-b', texts: ['one', 'two', 'three'] }, {})
+      .catch((error) => error);
+
+    assert.ok(!(result instanceof Error), `send failed: ${result?.message}`);
+    assert.equal(agentB.delivered.length, 1, 'one turn, however many parts');
+    const blocks = agentB.delivered[0].message.content.map((block) => block.text);
+    assert.equal(blocks.length, 4, 'a lead-in plus one block per part');
+    assert.equal(blocks.includes('three'), true);
+  } finally {
+    await dispose();
+  }
+});

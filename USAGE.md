@@ -133,12 +133,34 @@ A bus message appears in the recipient as a user message beginning `Agent <sende
 
 Two variants exist for `bus_ask`. A question begins `Agent <id> asked you a question:` and ends with a note that the reply in this turn is returned to the asker automatically — without that note, a real model tends to answer *and* re-send the answer with `bus_send`, delivering it twice. A late answer to a pending ask begins `Agent <id> answered your earlier question:`.
 
+### Spending fewer turns
+
+A `followup` costs a whole turn, and a turn resends the target's entire context to the
+model. Two options cut that directly:
+
+- **`texts` instead of `text`.** `bus_send { texts: ['one', 'two', 'three'] }` delivers
+  all three as one message carrying three blocks, so the target reads them in a single
+  turn. Three separate sends would have cost three turns. Use it whenever you have more
+  than one thing to say to the same session.
+- **`supersede: true`.** Replaces this session's newest *unclaimed* message to that
+  target instead of queueing behind it. A correction therefore never costs the turn the
+  stale instruction would have cost, and the target never starts the superseded work.
+  It only works while the message is still pending — an idle target claims one in about
+  a millisecond, so a message already being worked on cannot be unsent.
+
+Every `bus_send` result also reports `pendingFromYou` once it is above one, which is
+the signal that the pair is queueing rather than conversing:
+
+```
+Delivered msg-… to session-b (live) — 7 messages from this session are now unread there
+```
+
 ## 4. Choose the delivery mode
 
 | Mode | When to use it |
 |---|---|
-| `followup` (default) | Normal request/reply. The message becomes its own turn. |
-| `steer` | The target is mid-task and the message should reach it at its next step boundary rather than waiting for a whole turn. |
+| `followup` (default) | Normal request/reply. The message becomes its own turn. **One turn per message.** |
+| `steer` | The target is mid-task and the message should reach it at its next step boundary rather than waiting for a whole turn. **All pending `steer` messages are claimed together in one batch**, so a burst of them costs a single turn — unlike `followup`, which takes one queued message per turn. |
 
 `steer` on an idle target starts a turn, so it is safe to use without checking the target's state first.
 
@@ -247,6 +269,7 @@ Set these under the `peer-bus` row of the profile's `cordis.patch.yml`. **A patc
 | `maxWaitMs` | `600000` | Upper bound on any `bus_wait` or `bus_ask` timeout, so one call cannot hold a turn open indefinitely. |
 | `askBusyTimeoutMs` | `30000` | How long `bus_ask` waits when the target was already running, before returning `pending`. |
 | `resumedIdleMs` | `600000` | Release a session the bus cold-resumed *itself* after this much idle time, freeing its log lock. `0` keeps such sessions loaded. Sessions resumed through the host's own lookup are host-owned and unaffected. |
+| `maxPendingPerPair` | `0` | How many messages from one sender may sit unclaimed in one target's inbox. `0` disables the check. Beyond it, a send is refused with `target-backlog` — but a `supersede` still gets through, since replacing does not deepen the queue. |
 | `crossProcess` | `false` | Reach sessions held live by another DSH process over a local socket. **Off by default on purpose** — see below. |
 | `crossProcessTimeoutMs` | `2000` | Timeout for one remote control-plane query (roster merge, `bus_status`, ask cancellation). Short on purpose: a wedged peer must degrade to "looks stored", not stall a turn. |
 | `crossProcessDeliverTimeoutMs` | `60000` | Timeout for one forwarded delivery, which may have to cold-resume the target on the far side. |

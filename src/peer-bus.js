@@ -735,7 +735,12 @@ class SessionBus extends Service {
     const senderSessionId = payload?.senderSessionId;
     const targetId = payload?.targetId;
     const text = payload?.text;
-    if (typeof senderSessionId !== 'string' || typeof targetId !== 'string' || typeof text !== 'string') {
+    // `text` is a string for one body and an array of strings for a batch, which the
+    // sender flattens into a single message on this side.
+    const wellFormedText =
+      typeof text === 'string' ||
+      (Array.isArray(text) && text.length > 0 && text.every((part) => typeof part === 'string'));
+    if (typeof senderSessionId !== 'string' || typeof targetId !== 'string' || !wellFormedText) {
       throw new SessionBusError('a forwarded delivery needs a sender, a target, and text', 'invalid-text');
     }
     // `remote: false`: this is already the receiving side of a peer's request, and
