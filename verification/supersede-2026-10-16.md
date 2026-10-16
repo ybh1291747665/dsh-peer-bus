@@ -1,8 +1,10 @@
 # Supersede real-machine check — 2026-10-16
 
 **Command:** `npm run e2e:supersede` (also `npm run e2e:supersede:web`)
-**Result:** 28 checks passed, 0 failed — six consecutive runs on the headless profile and
-one on the web profile (exit code 0 every time).
+**Result:** 28 checks passed, 0 failed — ten consecutive runs on the headless profile and
+two on the web profile, every one exiting 0. The full offline suite was re-run afterwards
+(`test` 299/299, `boot-check`, `boot-check:web`, `e2e`, `e2e:web`, `e2e:xproc`,
+`e2e:supersede`, `e2e:supersede:web`), all green.
 
 This closes the gap recorded in `HANDOVER.md` §5.1: `supersede` was covered by nine unit
 tests against a **fake** inbox, so all they could assert was the mutation the bus *asks
