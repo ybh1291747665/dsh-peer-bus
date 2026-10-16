@@ -29,6 +29,8 @@
     "restart-e2e": "node scripts/restart-e2e.mjs",
     "real-model-check": "node scripts/real-model-check.mjs",
     "e2e:xproc": "node scripts/e2e-xproc.mjs",
+    "e2e:supersede": "node scripts/supersede-e2e.mjs",
+    "e2e:supersede:web": "BUS_CHECK_PROFILE=web BUS_CHECK_PATCH=../bus.e2e.patch.yml,../web-noserver.patch.yml node scripts/supersede-e2e.mjs",
     "real-model-xproc": "node scripts/real-model-xproc.mjs"
   },
   "dsh": {

@@ -145,8 +145,11 @@ model. Two options cut that directly:
 - **`supersede: true`.** Replaces this session's newest *unclaimed* message to that
   target instead of queueing behind it. A correction therefore never costs the turn the
   stale instruction would have cost, and the target never starts the superseded work.
-  It only works while the message is still pending — an idle target claims one in about
-  a millisecond, so a message already being worked on cannot be unsent.
+  It only works while the message is still pending, which in practice means **only while
+  the target is busy**: an idle target claims a delivery inside the very call that
+  delivers it, so there is no window to withdraw in and `supersede` simply appends.
+  Against a target that is mid-turn, the message waits in its inbox until that turn
+  ends — that wait is the window, and it lasts as long as the turn does.
 
 Every `bus_send` result also reports `pendingFromYou` once it is above one, which is
 the signal that the pair is queueing rather than conversing:
@@ -318,7 +321,7 @@ The package ships the checks it was developed against. All of them are offline: 
 
 ```bash
 npm run link-dev-deps   # once: symlink @deepseek-ai/* out of a local DSH install
-npm test                # 277 unit tests
+npm test                # 299 unit tests
 ```
 
 The heavier checks boot a real DSH profile from a workspace-local `DSH_HOME`, so they never touch your own `~/.dsh`:
@@ -330,6 +333,8 @@ npm run boot-check:web  # the same, on the web profile, without binding port 308
 npm run e2e             # two independent sessions hold a real conversation
 npm run e2e:web         # the same, on the web profile, where cold resume goes through the host lookup
 npm run restart-e2e     # that conversation survives a real process restart
+npm run e2e:xproc       # two real DSH processes, and the claim race between them
+npm run e2e:supersede   # supersede replaces a real pending message, and cannot on an idle target
 ```
 
 `npm run e2e` also proves the `./invariant` companion activated, and runs the
