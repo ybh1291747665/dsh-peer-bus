@@ -225,19 +225,10 @@ const alice = aliceHandle.agent;
 const bob = bobHandle.agent;
 const carol = carolHandle.agent;
 
-// The package's ./invariant companion must have activated. `register` reserves the
-// package name and throws on a duplicate, so a second registration of our own name
-// is direct evidence the companion is live (and it throws before any state change).
-const invariants = ctx.get('invariants');
-let companionLive = false;
-if (invariants !== undefined) {
-  try {
-    invariants.register('dsh-peer-bus', () => {});
-  } catch (error) {
-    companionLive = /already registered/.test(String(error?.message));
-  }
-}
-check('the ./invariant companion registered with the invariant service', companionLive);
+// There used to be a companion check here: the package's `./invariant` export
+// registered durable-shape checks with the `invariants` service. DSH 0.2.1
+// removed the runtime invariants plugin and every `./invariant` export, so the
+// companion is gone and there is nothing left to assert.
 
 console.log('scenario: two independent sessions exchange a message');
 check('alice and bob are unrelated roots', alice.session.header.parentSession === undefined && bob.session.header.parentSession === undefined);

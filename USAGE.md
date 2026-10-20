@@ -321,15 +321,14 @@ The package ships the checks it was developed against. All of them are offline: 
 
 ```bash
 npm run link-dev-deps   # once: symlink @deepseek-ai/* out of a local DSH install
-npm test                # 299 unit tests
+npm test                # 285 unit tests
 ```
 
 The heavier checks boot a real DSH profile from a workspace-local `DSH_HOME`, so they never touch your own `~/.dsh`:
 
 ```bash
 npm run test-home       # once: build .dsh-test/profiles/{headless,web}
-npm run boot-check      # the plugin mounts and registers its six tools
-npm run boot-check:web  # the same, on the web profile, without binding port 3080
+npm run boot-check:web  # the plugin mounts and registers its six tools — the free path
 npm run e2e             # two independent sessions hold a real conversation
 npm run e2e:web         # the same, on the web profile, where cold resume goes through the host lookup
 npm run restart-e2e     # that conversation survives a real process restart
@@ -337,11 +336,15 @@ npm run e2e:xproc       # two real DSH processes, and the claim race between the
 npm run e2e:supersede   # supersede replaces a real pending message, and cannot on an idle target
 ```
 
-`npm run e2e` also proves the `./invariant` companion activated, and runs the
-invariant across the whole conversation as a false-positive test. It drives
-`bus_wait` from a model tool call inside a real turn, which is the only way to
-exercise DSH's rule that nothing may append to a session while one of its
-events is still being published.
+`npm run boot-check` (the headless profile) is the one exception to "no model
+calls": since DSH 0.2.1 a non-web profile refuses to boot without a task, so it
+needs `BUS_CHECK_TASK="say hi"`, and that really runs the agent.
+
+`npm run e2e` used to also prove the `./invariant` companion activated; DSH 0.2.1
+removed the runtime invariants plugin, so that companion and its check are gone.
+What it still proves is the `bus_wait` path: it drives `bus_wait` from a model
+tool call inside a real turn, which is the only way to exercise DSH's rule that
+nothing may append to a session while one of its events is still being published.
 
 `npm run e2e` mounts the **real** workspace registry — which only the web bundle
 ships — so the archive refusal is exercised against the genuine service rather

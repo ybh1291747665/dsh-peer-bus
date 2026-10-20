@@ -5,29 +5,24 @@
 # mount the plugin twice and the second bus would fight the first over the same
 # socket and registry.
 #
-# Five changes over the production overlay:
+# Changes over the production overlay:
 #   1. `headless-runner` is disabled. It is the one-shot task driver, and it
 #      rejects a boot with no task before the agent loop can come up; these
 #      scripts need a live loop they can create their own agents on.
-#   2. `@deepseek-ai/dsh-invariants` is mounted so the package's `./invariant`
-#      companion actually activates. No shipped profile except `dsh-sdk-minimal`
-#      mounts that service, so without this row the companion is inert and its
-#      checks would never be exercised. Running it across the whole conversation
-#      is the false-positive test: a legitimate bus message must not trip it.
-#   3. `@deepseek-ai/dsh-agent-preset-registry` is mounted with two declared
+#   2. `@deepseek-ai/dsh-agent-preset-registry` is mounted with two declared
 #      presets. Only the web profile mounts that registry, so on the plain
 #      headless profile a resume that forgot to mount a session's preset would
 #      look fine — which is exactly how that bug survived. Two presets, neither
 #      the default, let the script assert the RECORDED preset was mounted rather
 #      than the default.
-#   4. The allowlist uses ONE `sameWorkspace` rule rather than id patterns, so the
+#   3. The allowlist uses ONE `sameWorkspace` rule rather than id patterns, so the
 #      workspace rule is exercised end to end. That also makes the deny probe
 #      meaningful: the scripts put the talking sessions in the package workspace
 #      and the probe session in a temp directory, so the same single rule both
 #      grants the conversation and refuses the outsider. An id-pattern rule would
 #      have denied the outsider for the unrelated reason that no pattern named it.
 #      Id patterns stay covered by the unit tests.
-#   5. `@deepseek-ai/dsh-workspace` is mounted for the same reason as (3): only
+#   4. `@deepseek-ai/dsh-workspace` is mounted for the same reason as (2): only
 #      the web bundle mounts it, so on the plain headless profile the bus's
 #      archive protection would have nothing to read and the archived-target
 #      path would be untested. Mounting the REAL registry lets the script archive
@@ -36,9 +31,6 @@
   disabled: true
 
 - insert:
-    - id: invariants
-      name: '@deepseek-ai/dsh-invariants'
-
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
 
@@ -69,9 +61,6 @@
         # Short so the script can watch a resumed session be released for idleness and
         # then be resumed again, without waiting the production ten minutes.
         resumedIdleMs: 1500
-
-    - id: peer-bus-invariant
-      name: 'dsh-peer-bus/invariant'
 
     - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'

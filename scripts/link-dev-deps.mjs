@@ -30,10 +30,11 @@ const packages = [
   'dsh-llm',
   'dsh-session',
   'dsh-tools',
-  // imported by scripts/ (profile boot, stub adapter, e2e, invariant checks)
+  // imported by scripts/ (profile boot, stub adapter, e2e)
+  // NB: 'dsh-invariants' used to be linked here. DSH 0.2.1 removed the runtime
+  // invariants plugin, so the package no longer exists in the install.
   'dsh-app-boot',
   'dsh-home-paths',
-  'dsh-invariants',
   'dsh-launch-environment',
 ];
 
@@ -128,7 +129,7 @@ for (const packageName of unscopedPackages) {
 console.log(`linked ${linked} packages + the dsh CLI from ${dshRoot}`);
 if (linkedUnscoped > 0) console.log(`linked ${linkedUnscoped} lazily-resolved package(s): ${unscopedPackages.join(', ')}`);
 if (missing.length > 0) {
-  // An optional peer that the install does not carry is expected, not an error:
-  // dsh-invariants ships only in dsh-sdk-minimal profiles.
+  // An optional peer that the install does not carry is expected, not an error.
+  // (dsh-invariants used to be the common case here; DSH 0.2.1 removed it.)
   console.log(`not present in this install (optional): ${missing.join(', ')}`);
 }
